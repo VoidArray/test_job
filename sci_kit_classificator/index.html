@@ -1,0 +1,33 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <meta http-equiv="content-type" content="text/html; charset=utf-8">
+</head>
+
+<body>
+<form action="/" method="POST" enctype="multipart/form-data">
+    <p>Архив с обучающими примерами:</p>
+    <input type="file" name="learnfile" size="40"/><br>
+    <p>Архив с тестовыми примерами:</p>
+    <input type="file" name="testfile" size="40"/><br><br><br>
+    <input type="submit" value="RUN!!!"/><br>
+</form>
+<p> {{status}}</p>
+%if len(results) > 0:
+<p>Training accuracy: {{accuracy}} </p>
+<table style="border-spacing: 10px 10px;" border="1">
+
+        <td>Values</td><td>Class mark</td><td>Confidence</td>
+
+    %end
+    %for row in results:
+        %(test_value, class_mark, confidence) = row
+        <tr>
+            <td align="center">{{test_value}}</td>
+            <td align="center">{{class_mark}}</td>
+            <td align="center">{{confidence}} %</td>
+        </tr>
+%end
+</table>
+</body>
+</html>
