@@ -1,0 +1,22 @@
+<!DOCTYPE HTML>
+<html>
+
+<head>
+    <meta charset="utf-8">
+</head>
+
+<body>
+    <script src="https://code.jquery.com/jquery-1.12.4.min.js"></script>
+    <h1>Five in a Row</h1>
+    <p>Welcome to game. Requires a row of five or more squares for a win.</p>
+    <p>Test task 2016</p>
+    <script>
+        function newGame(){
+            window.location = "/game/0/{{ user_id }}";
+        }
+    </script>
+    <input value="Play!" onclick="newGame();" type="button">
+</body>
+</html>
+
+

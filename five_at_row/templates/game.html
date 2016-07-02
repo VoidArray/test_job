@@ -1,0 +1,294 @@
+<!DOCTYPE HTML>
+<html>
+
+<head>
+    <meta charset="utf-8">
+    <style>
+        div { 
+            margin: 20px;
+        }
+        p.caption{
+            display: inline-block;
+        }
+    </style>
+</head>
+<body>
+    <script src="https://code.jquery.com/jquery-1.12.4.min.js"></script>
+    <div>
+        <h1>Five at row (gomoku free style)</h1>
+        <p>Welcome to game. <br> Requires a row of five squares for a win.</p>
+        <p id='status'>Connecting...</p>
+        <input value="Back view to center" onclick="clearOffset();" type="button">
+        <input value="New game" onclick="startNewGame();" type="button"><br>
+        <p class="caption">Cell size: </p>
+        <select onchange="changeCellSize(this.value);">
+            <option value="32">32</option>
+            <option value="48">48</option>
+            <option value="64">64</option>
+        </select>
+        <p class="caption">Field size: </p>
+        <select onchange="changeCellCount(this.value);">
+            <option value="16">16</option>
+            <option value="24">24</option>
+            <option value="32">32</option>
+        </select>
+    </div>
+    <canvas id="gameField">Canvas here</canvas>
+    
+    <script>
+        //User vars
+        var user_id = '{{ user_id }}';
+        var game_id = '{{ game_id }}';
+        var player_color = 'navy';
+        var gameDesk = {};
+        var game_state = -1;
+        var game_continued = true;
+        var player_number = -1;
+        //Field vars
+        var cellSize  = 32;
+        var cellCount = 16;
+        var canvas_offset = {};
+        var is_mouse_down = false;
+        var old_mouse_pos = {};
+        var move_count = 0;
+        //Game Field
+        var canvas = document.getElementById('gameField');
+        var context;
+        changeCanvasSize();
+        clearOffset();
+        startUpdateTimer();
+
+        canvas.addEventListener('mousedown', function(evt) {
+            old_mouse_pos = getMousePos(canvas, evt);
+            $('canvas').css('cursor', 'move');
+            is_mouse_down = true;
+        }, false);
+
+        canvas.addEventListener('mousemove', function(evt) {
+            if (is_mouse_down){
+                var mousePos = getMousePos(canvas, evt);
+                canvas_offset.x = canvas_offset.old_x + old_mouse_pos.x - mousePos.x;
+                canvas_offset.y = canvas_offset.old_y + old_mouse_pos.y - mousePos.y;
+                canvas_offset.col_begin = canvas_offset.x / cellSize | 0;
+                canvas_offset.row_begin = canvas_offset.y / cellSize | 0;
+                canvas_offset.cell_offset_x = Math.abs(canvas_offset.x) % cellSize;
+                canvas_offset.cell_offset_y = Math.abs(canvas_offset.y) % cellSize;
+                //console.log('offset: ', canvas_offset.x, canvas_offset.y, canvas_offset.col_begin, canvas_offset.row_begin, canvas_offset.cell_offset_x, canvas_offset.cell_offset_y);
+                repaintCanvas();
+            }
+        }, false);
+
+        canvas.addEventListener('mouseup', function(evt) {
+            //if it was click without move
+            if ((Math.abs(canvas_offset.old_x - canvas_offset.x) < cellSize) && (Math.abs(canvas_offset.old_y - canvas_offset.y) < cellSize)){
+                if (game_state == player_number) {
+                    var mousePos = getMousePos(canvas, evt);
+                    var col = canvas_offset.col_begin + ((mousePos.x - canvas_offset.cell_offset_x) / cellSize | 0);
+                    var row = canvas_offset.row_begin + ((mousePos.y - canvas_offset.cell_offset_y) / cellSize | 0);
+                    isMovePossible = isCanMakeMove(col, row);
+                    if (isMovePossible){                    
+                        var link_make_move = '/move/' + game_id + '/' + user_id + '/' + col + '/' + row;
+                        var jqxhr = $.get(link_make_move)
+                            .error(function() {console.log("Error " + link_make_move); })
+                            .complete(function(move_answer) {
+                                var items = move_answer.responseJSON;
+                                if ('status' in items){
+                                    status_message = items['status'];
+                                    sethStatusParagrap(status_message);
+                                }
+                            });
+                    }
+                }
+            }
+            endChangeOffset();
+            $('canvas').css('cursor', 'pointer');
+        }, false);
+
+        canvas.addEventListener('mouseout', function(evt) {
+            endChangeOffset();
+        }, false);
+
+        function log_player_state(){
+            console.log('user_id', user_id, 'game_id', game_id, 'game_state', game_state, 'player_color', player_color, 'player_number', player_number);
+        }
+
+        function endChangeOffset(){
+            repaintCanvas();
+            is_mouse_down = false;
+            canvas_offset.old_x = canvas_offset.x;
+            canvas_offset.old_y = canvas_offset.y;
+            console.log('canvas move end');
+        }
+
+        function sethStatusParagrap(status){
+            if (game_state >= 0){
+                your_number = player_number + 1
+                status_message = status + '. You is player ' + your_number + ' and your color is ' + player_color + '.';
+                if (game_state == player_number)
+                    status_message += ' Your turn.';
+                else if (game_state < 2)
+                    status_message += ' Wait opponent turn.';
+                else
+                    status_message += ' Game is over.';
+            } else {
+                status_message = ' Wait begin game. In waiting, you can click on desk :)';
+            }
+            $('p#status').text(status_message);
+        }
+
+        function getMousePos(canvas, evt) {
+            var rect = canvas.getBoundingClientRect();
+            return {
+                x: evt.clientX - rect.left,
+                y: evt.clientY - rect.top
+            };
+        }
+
+        function updateGameState(){
+            link_getstate = '/getstate/'  + game_id + '/' + user_id;
+            var jqxhr = $.getJSON(link_getstate)
+                //.success(function() { console.log("Успешное выполнение"); })
+                .error(function() { console.log("Error " + link_getstate); })
+                .complete(function(data) {
+                    var items = data.responseJSON;
+                    if ('game_id' in items){
+                        game_id = items['game_id'];
+                    }
+                    if ('color' in items){
+                        player_color = items['color'];
+                    }
+                    if ('game_state' in items){
+                        game_state = items['game_state'];
+                    }
+                    if ('player_number' in items){
+                        player_number = items['player_number'];
+                    }
+                    if ('game_continued' in items){
+                        game_continued = items['game_continued'];
+                    }
+                    if ('status' in items){
+                        status_message = items['status'];
+                        sethStatusParagrap(status_message);
+                    }
+                    if ('desk' in items){
+                        gameDesk = items['desk'];
+                        repaintCanvas();
+                    }
+                    if ('move_count' in items){
+                        move_count = items['move_count'];
+                    }
+                });
+            log_player_state();
+            startUpdateTimer();
+        }        
+
+        function repaintCanvas(){
+            context.clearRect(0, 0, canvas.width, canvas.height);
+            context.strokeStyle = 'black';
+            context.strokeRect(0, 0, canvas.width, canvas.height);
+            context.lineWidth = 5;
+            // horizontal lines
+            for (var i = 0; i <= cellCount; i += 1){
+                    context.beginPath();
+                    context.moveTo(canvas_offset.cell_offset_x,                        canvas_offset.cell_offset_y + i * cellSize);
+                    context.lineTo(canvas_offset.cell_offset_x + cellCount * cellSize, canvas_offset.cell_offset_y + i * cellSize);
+                    context.stroke();
+            }
+            // vertical lines
+            for (var i = 0; i <= cellCount; i += 1){
+                    context.beginPath();
+                    context.moveTo(canvas_offset.cell_offset_x + i * cellSize, canvas_offset.cell_offset_y);
+                    context.lineTo(canvas_offset.cell_offset_x + i * cellSize, canvas_offset.cell_offset_y + cellCount * cellSize);
+                    context.stroke();
+            }
+            // colored cells    
+            for (var col = canvas_offset.col_begin; col <= canvas_offset.col_begin + cellCount; col++)
+                for (var row = canvas_offset.row_begin; row <= canvas_offset.row_begin + cellCount; row++){
+                    if (col in gameDesk && row in gameDesk[col]){
+                        relative_col_number = col - canvas_offset.col_begin;
+                        relative_row_number = row - canvas_offset.row_begin;
+                        context.fillStyle = gameDesk[col][row]['color'];
+                        context.fillRect(
+                            canvas_offset.cell_offset_x + relative_col_number * cellSize, 
+                            canvas_offset.cell_offset_y + relative_row_number * cellSize, 
+                            cellSize, cellSize
+                        );
+                        order = gameDesk[col][row]['order']
+                        
+                        context.fillStyle = 'white';
+                        context.font = 'bold 12pt Arial';
+                        context.textBaseline = 'top';
+                        context.fillText(order, canvas_offset.cell_offset_x + relative_col_number * cellSize, 
+                                                canvas_offset.cell_offset_y + relative_row_number * cellSize);
+                    }
+                }
+        }
+
+        function clearOffset(){
+            canvas_offset.x = 0;
+            canvas_offset.y = 0;
+            canvas_offset.col_begin = 0;
+            canvas_offset.row_begin = 0;
+            canvas_offset.cell_offset_x = 0;
+            canvas_offset.cell_offset_y = 0;
+            canvas_offset.old_x = 0;
+            canvas_offset.old_y = 0;
+            repaintCanvas();
+        }
+
+        function isCanMakeMove(col, row){
+            if (!(col in gameDesk)){
+                gameDesk[col] = {};
+            }
+            if (!gameDesk[col][row]){
+                gameDesk[col][row] = {};
+                gameDesk[col][row]['color'] = player_color;
+                ++move_count;
+                gameDesk[col][row]['order'] = move_count;
+                return true;
+            }
+            return false;
+        }
+
+        function startUpdateTimer(){
+            if (game_continued)
+                setTimeout(updateGameState, 1000);
+            else {
+                console.log('Game over', game_state);
+                if (confirm('Game is over. Start new game?')) {
+                    startNewGame();
+                }  
+            }
+        }
+
+        function startNewGame(){
+            if (game_continued){
+                surrender_link = '/surrender/' + game_id + '/' + user_id;
+                var jqxhr = $.get(surrender_link);
+            }
+            var new_link = '/game/0/' + user_id;
+            window.location = new_link;
+        }
+
+        function changeCellSize(n){
+            cellSize = parseInt(n, 10);
+            changeCanvasSize();
+            repaintCanvas();
+        }
+
+        function changeCellCount(n){
+            cellCount = parseInt(n, 10);
+            changeCanvasSize();
+            repaintCanvas()
+        }
+
+        function changeCanvasSize(){
+            canvas.width  = cellSize * cellCount;
+            canvas.height = cellSize * cellCount;
+            context = canvas.getContext('2d');
+        }        
+    </script>
+</body>
+</html>
+
+
